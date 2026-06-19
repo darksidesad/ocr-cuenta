@@ -1,0 +1,38 @@
+# Dockerfile para Streamlit UI
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instalar dependencias del sistema
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar e instalar dependencias Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Crear usuario no-root
+RUN groupadd -r streamlit && useradd -r -g streamlit -d /app streamlit
+
+# Copiar código fuente
+COPY ui/ ./ui/
+RUN chown -R streamlit:streamlit /app
+
+# Cambiar a usuario no-root
+USER streamlit
+
+# Puerto de Streamlit
+EXPOSE 8501
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+# Ejecutar Streamlit
+CMD ["streamlit", "run", "ui/streamlit_app.py", \
+     "--server.port=8501", \
+     "--server.address=0.0.0.0", \
+     "--server.headless=true", \
+     "--browser.gatherUsageStats=false"]
