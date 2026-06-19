@@ -1,5 +1,6 @@
 """Configuración del proyecto desde variables de entorno."""
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -22,6 +23,16 @@ class Settings(BaseSettings):
     # App
     max_file_size_mb: int = 10
     environment: str = "development"
+
+    @field_validator("database_url")
+    @classmethod
+    def fix_database_url(cls, v: str) -> str:
+        """Auto-corrige DATABASE_URL para usar asyncpg."""
+        if v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        return v
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
