@@ -217,6 +217,7 @@ def main() -> None:
     # Sidebar
     with st.sidebar:
         st.write(f"👤 **{st.session_state.get('username', 'Usuario')}**")
+        st.caption(f"🤖 Modelo: `{os.environ.get('OPENROUTER_MODEL', 'gemini-2.0-flash')}`")
         if st.button("Cerrar Sesión"):
             st.session_state.authenticated = False
             st.session_state.token = None
