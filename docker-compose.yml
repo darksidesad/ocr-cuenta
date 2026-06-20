@@ -23,6 +23,39 @@ services:
     networks:
       - ocr-network
 
+  # === Ollama (LLM local, fallback sin API key) ===
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ocr-dian-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - ocr-network
+
+  # === Descargar modelo glm-ocr en Ollama ===
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: ocr-dian-ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+    command: >
+      sh -c "echo 'Descargando modelo glm-ocr...' &&
+             ollama pull glm-ocr &&
+             echo 'Modelo glm-ocr descargado exitosamente'"
+    networks:
+      - ocr-network
+
   # === FastAPI App ===
   app:
     build:
@@ -34,6 +67,7 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://facturas_user:${DB_PASSWORD:-change_me}@db:5432/facturas_db
+      OLLAMA_HOST: http://ollama:11434
     ports:
       - "8000:8000"
     depends_on:
@@ -73,6 +107,8 @@ services:
 
 volumes:
   pgdata:
+    driver: local
+  ollama_data:
     driver: local
 
 networks:

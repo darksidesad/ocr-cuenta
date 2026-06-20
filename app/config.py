@@ -1,6 +1,6 @@
 """Configuración del proyecto desde variables de entorno."""
 
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -9,9 +9,13 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Configuración centralizada desde .env."""
 
-    # OpenRouter / LLM
-    openrouter_api_key: str
+    # OpenRouter / LLM (opcional — si no hay key, usa Ollama local)
+    openrouter_api_key: str = ""
     openrouter_model: str = "google/gemini-2.0-flash-001"
+
+    # Ollama (fallback local cuando no hay OpenRouter)
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = "glm-ocr"
 
     # Auth (JWT)
     app_username: str
@@ -30,6 +34,10 @@ class Settings(BaseSettings):
     @classmethod
     def fix_database_url(cls, v: str) -> str:
         """Auto-corrige DATABASE_URL para asyncpg."""
+        # Solo procesar URLs de PostgreSQL
+        if not (v.startswith("postgres://") or v.startswith("postgresql://")):
+            return v
+
         # 1. Normalizar prefijo del dialecto
         if v.startswith("postgres://"):
             v = "postgresql+asyncpg://" + v[len("postgres://"):]
@@ -41,7 +49,10 @@ class Settings(BaseSettings):
         params = parse_qs(parsed.query)
 
         # Parámetros soportados por asyncpg
-        supported = {"ssl", "sslcert", "sslkey", "sslrootcert", "application_name", "server_settings"}
+        supported = {
+            "ssl", "sslcert", "sslkey", "sslrootcert",
+            "application_name", "server_settings",
+        }
         clean_params = {k: v_list[0] for k, v_list in params.items() if k in supported}
 
         clean_query = urlencode(clean_params) if clean_params else ""

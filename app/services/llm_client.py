@@ -1,4 +1,4 @@
-"""Cliente para OpenRouter (LLM) — extracción de datos de facturas."""
+"""Cliente LLM — OpenRouter (principal) + Ollama (fallback local)."""
 
 import json
 import logging
@@ -6,6 +6,10 @@ import logging
 import httpx
 
 from app.config import settings
+from app.services.ollama_client import (
+    extract_with_ollama,
+    ocr_with_ollama,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +46,31 @@ class LLMResponseError(Exception):
     """Error en la respuesta del LLM (JSON inválido)."""
 
 
-async def extract_with_llm(text: str) -> dict:
-    """Envía el texto extraído a OpenRouter y retorna los datos parseados.
+def has_openrouter() -> bool:
+    """Retorna True si hay API key de OpenRouter configurada."""
+    return bool(settings.openrouter_api_key and settings.openrouter_api_key.strip())
 
-    Usa Gemini Flash con structured outputs (response_format: json_object).
+
+async def extract_with_llm(text: str) -> dict:
+    """Envía texto al LLM y retorna datos parseados.
+
+    Usa OpenRouter si hay API key, si no fallback a Ollama local.
     """
+    if has_openrouter():
+        logger.info("Usando OpenRouter para extracción")
+        return await _extract_openrouter(text)
+    else:
+        logger.info("Sin API key — usando Ollama local para extracción")
+        return await extract_with_ollama(text)
+
+
+async def ocr_with_llm(image_path) -> str:
+    """Extrae texto de imagen usando Ollama glm-ocr (fallback local)."""
+    return await ocr_with_ollama(image_path)
+
+
+async def _extract_openrouter(text: str) -> dict:
+    """Extrae datos usando OpenRouter."""
     headers = {
         "Authorization": f"Bearer {settings.openrouter_api_key}",
         "Content-Type": "application/json",

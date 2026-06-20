@@ -77,9 +77,12 @@ class TestExtractFactura:
         assert result.confianza > 0
 
     @pytest.mark.asyncio
+    @patch("pdf2image.convert_from_path")
+    @patch("app.extractor.ocr_with_llm")
     @patch("app.extractor.extract_text")
-    async def test_error_extraccion_texto(self, mock_extract):
+    async def test_error_extraccion_texto(self, mock_extract, mock_ocr, mock_convert):
         mock_extract.side_effect = PDFExtractionError("No se pudo leer")
+        mock_convert.side_effect = Exception("poppler no disponible")
 
         with pytest.raises(ExtractionError):
             await extract_factura(Path("test.pdf"), "factura.pdf")

@@ -13,11 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 os.environ.setdefault("OPENROUTER_API_KEY", "test-key")
 os.environ.setdefault("APP_USERNAME", "admin")
 os.environ.setdefault("APP_PASSWORD", "secret")
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-jwt-testing")
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-jwt-testing-32bytes!!")
 os.environ.setdefault("JWT_EXPIRE_MINUTES", "60")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
 os.environ.setdefault("MAX_FILE_SIZE_MB", "10")
 os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("OLLAMA_HOST", "http://localhost:11434")
+os.environ.setdefault("OLLAMA_MODEL", "glm-ocr")
 
 from app.database import Base, get_session
 from app.main import app
