@@ -5,8 +5,8 @@ Servicio de extracción automática de datos de facturas colombianas (DIAN) usan
 ## Stack
 
 - **Backend:** Python 3.11 + FastAPI
-- **LLM:** OpenRouter (Gemini Flash)
-- **OCR:** pdfplumber + pytesseract
+- **LLM:** OpenRouter (Gemini Flash) u Ollama local (glm-ocr)
+- **OCR:** pdfplumber + pytesseract + Pillow
 - **DB:** PostgreSQL 15
 - **Frontend:** Streamlit
 - **Deploy:** Docker Compose
@@ -16,7 +16,7 @@ Servicio de extracción automática de datos de facturas colombianas (DIAN) usan
 - Python 3.11+
 - Docker y Docker Compose
 - Tesseract OCR (para PDFs escaneados)
-- Cuenta en OpenRouter con API key
+- Cuenta en OpenRouter con API key **o** Docker (para usar Ollama local sin API key)
 
 ### Instalar Tesseract (Ubuntu/Debian)
 
@@ -43,7 +43,15 @@ cp .env.example .env
 ### 2. Editar `.env` con tus valores
 
 ```bash
+# Opción A: Con OpenRouter (requiere API key)
 OPENROUTER_API_KEY=tu-api-key-aqui
+OPENROUTER_MODEL=google/gemini-2.0-flash-001
+
+# Opción B: Sin API key — se usa Ollama local con glm-ocr automáticamente
+# OPENROUTER_API_KEY=
+# OLLAMA_HOST=http://localhost:11434
+# OLLAMA_MODEL=glm-ocr
+
 JWT_SECRET_KEY=tu-clave-secreta-aqui
 APP_PASSWORD=tu-contraseña-aqui
 DATABASE_URL=postgresql+asyncpg://facturas_user:change_me@localhost:5432/facturas_db
@@ -99,7 +107,7 @@ streamlit run ui/streamlit_app.py --server.port 8501
 |--------|------|-------------|------|
 | GET | `/health` | Healthcheck | No |
 | POST | `/auth/login` | Login → JWT token | No |
-| POST | `/facturas/extraer` | Extraer datos de factura PDF | Sí (Bearer) |
+| POST | `/facturas/extraer` | Extraer datos de factura (PDF, JPG, PNG) | Sí (Bearer) |
 | GET | `/facturas/historial` | Historial de extracciones | Sí (Bearer) |
 
 ### Ejemplo de uso
@@ -110,10 +118,15 @@ TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"tu-contraseña"}' | jq -r '.access_token')
 
-# Extraer factura
+# Extraer factura (PDF o imagen)
 curl -X POST http://localhost:8000/facturas/extraer \
   -H "Authorization: Bearer $TOKEN" \
   -F "archivo=@factura.pdf"
+
+# También acepta JPG/PNG
+curl -X POST http://localhost:8000/facturas/extraer \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "archivo=@factura.jpg"
 
 # Ver historial
 curl http://localhost:8000/facturas/historial \
@@ -168,7 +181,8 @@ ocr-dian/
 │   │   └── facturas.py       # POST /extraer, GET /historial
 │   └── services/
 │       ├── pdf_reader.py     # pdfplumber + pytesseract
-│       └── llm_client.py     # OpenRouter client
+│       ├── llm_client.py     # OpenRouter / Ollama routing
+│       └── ollama_client.py  # Cliente Ollama REST
 ├── ui/
 │   └── streamlit_app.py      # Frontend Streamlit
 ├── tests/
@@ -192,8 +206,10 @@ ocr-dian/
 
 | Variable | Descripción | Default |
 |----------|-------------|---------|
-| OPENROUTER_API_KEY | API key de OpenRouter | (requerido) |
-| OPENROUTER_MODEL | Modelo LLM | google/gemini-2.0-flash-001 |
+| OPENROUTER_API_KEY | API key de OpenRouter (opcional — sin ella usa Ollama) | `""` |
+| OPENROUTER_MODEL | Modelo LLM en OpenRouter | google/gemini-2.0-flash-001 |
+| OLLAMA_HOST | URL del servidor Ollama | http://localhost:11434 |
+| OLLAMA_MODEL | Modelo OCR en Ollama | glm-ocr |
 | APP_USERNAME | Usuario para login | admin |
 | APP_PASSWORD | Contraseña para login | (requerido) |
 | JWT_SECRET_KEY | Secret para JWT | (requerido) |
