@@ -22,7 +22,7 @@ async def test_extraer_sin_token(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_extraer_no_pdf(client: AsyncClient):
-    """POST /facturas/extraer con archivo no-PDF retorna 422."""
+    """POST /facturas/extraer con archivo no permitido retorna 422."""
     # Login para obtener token
     login_resp = await client.post(
         "/auth/login",
@@ -36,6 +36,49 @@ async def test_extraer_no_pdf(client: AsyncClient):
         files={"archivo": ("test.txt", io.BytesIO(b"no es pdf"), "text/plain")},
     )
     assert response.status_code == 422
+    assert "PDF, JPG" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@patch("app.routers.facturas.extract_factura")
+async def test_extraer_jpg_exito(mock_extract, client: AsyncClient):
+    """POST /facturas/extraer con JPG acepta el archivo."""
+    from datetime import date
+    from decimal import Decimal
+
+    mock_factura = FacturaDIAN(
+        nit_emisor="900123456",
+        nombre_emisor="Empresa S.A.S",
+        nit_receptor="900654321",
+        nombre_receptor="Cliente Ltda",
+        numero_factura="FE0000001",
+        fecha_emision=date(2024, 1, 15),
+        cufe=None,
+        items=[],
+        subtotal=Decimal("100000"),
+        iva_total=Decimal("19000"),
+        total=Decimal("119000"),
+        metodo_extraccion="imagen_directa",
+        confianza=0.95,
+    )
+    mock_extract.return_value = mock_factura
+
+    login_resp = await client.post(
+        "/auth/login",
+        json={"username": "admin", "password": "secret"},
+    )
+    token = login_resp.json()["access_token"]
+
+    jpg_bytes = b"\xff\xd8\xff\xe0 fake jpg"
+    response = await client.post(
+        "/facturas/extraer",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"archivo": ("factura.jpg", io.BytesIO(jpg_bytes), "image/jpeg")},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["datos"]["metodo_extraccion"] == "imagen_directa"
+    assert data["datos"]["nit_emisor"] == "900123456"
 
 
 @pytest.mark.asyncio

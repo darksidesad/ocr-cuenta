@@ -21,6 +21,12 @@ from app.services.pdf_reader import PDFExtractionError
 
 router = APIRouter(prefix="/facturas", tags=["facturas"])
 
+ALLOWED_TYPES = {
+    "application/pdf": ".pdf",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+}
+
 
 @router.post(
     "/extraer",
@@ -37,16 +43,17 @@ async def extraer_factura(
     _username: str = Depends(verify_token),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ExtraccionResponse:
-    """Extrae datos de una factura colombiana (PDF).
+    """Extrae datos de una factura colombiana (PDF o imagen).
 
-    Acepta un archivo PDF (multipart/form-data). Detecta si es texto nativo
-    o escaneado, extrae el texto, envía al LLM y retorna datos validados.
+    Acepta archivos PDF, JPG/JPEG o PNG (multipart/form-data).
+    Detecta el tipo, extrae texto, envía al LLM y retorna datos validados.
     """
     # Validar tipo de archivo
-    if archivo.content_type != "application/pdf":
+    suffix = ALLOWED_TYPES.get(archivo.content_type)
+    if suffix is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Solo se permiten archivos PDF",
+            detail="Solo se permiten archivos PDF, JPG/JPEG o PNG",
         )
 
     # Validar tamaño
@@ -61,12 +68,12 @@ async def extraer_factura(
     # Guardar temporalmente
     tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(contents)
             tmp_path = Path(tmp.name)
 
         # Extraer datos
-        nombre_archivo = archivo.filename or "factura.pdf"
+        nombre_archivo = archivo.filename or f"factura{suffix}"
         factura = await extract_factura(tmp_path, nombre_archivo)
 
         # Guardar en BD
@@ -97,7 +104,7 @@ async def extraer_factura(
     except PDFExtractionError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error procesando PDF: {e}",
+            detail=f"Error procesando archivo: {e}",
         ) from e
     finally:
         if tmp_path is not None and tmp_path.exists():

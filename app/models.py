@@ -55,7 +55,7 @@ class FacturaDIAN(BaseModel):
     total: Decimal
     moneda: str = "COP"
     # Metadata
-    metodo_extraccion: Literal["texto_nativo", "ocr_fallback"]
+    metodo_extraccion: Literal["texto_nativo", "ocr_fallback", "imagen_directa"]
     confianza: float
 
     @field_validator("confianza")

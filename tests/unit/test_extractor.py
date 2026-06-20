@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -159,3 +159,46 @@ class TestExtractFactura:
         result = await extract_factura(Path("test.pdf"), "factura.pdf")
         assert isinstance(result, FacturaDIAN)
         assert result.confianza < 0.5
+
+
+class TestExtractFromImage:
+    """Tests para extracción desde imágenes (JPG/PNG)."""
+
+    @pytest.mark.asyncio
+    @patch("app.extractor.ocr_with_llm")
+    @patch("app.extractor.Image")
+    async def test_extraccion_jpg_exitosa(self, mock_image, mock_ocr):
+        mock_img = MagicMock()
+        mock_image.open.return_value = mock_img
+
+        mock_ocr.return_value = "NIT: 900123456\nEmpresa S.A.S\nTotal: 119000"
+
+        with patch("app.extractor.extract_with_llm") as mock_llm:
+            mock_llm.return_value = {
+                "nit_emisor": "900123456",
+                "nombre_emisor": "Empresa S.A.S",
+                "nit_receptor": "900654321",
+                "nombre_receptor": "Cliente Ltda",
+                "numero_factura": "FE0000001",
+                "fecha_emision": "2024-01-15",
+                "items": [],
+                "subtotal": 100000,
+                "iva_total": 19000,
+                "total": 119000,
+            }
+            result = await extract_factura(Path("foto.jpg"), "factura.jpg")
+
+        assert isinstance(result, FacturaDIAN)
+        assert result.metodo_extraccion == "imagen_directa"
+        assert result.nit_emisor == "900123456"
+
+    @pytest.mark.asyncio
+    @patch("app.extractor.ocr_with_llm")
+    @patch("app.extractor.Image")
+    async def test_extraccion_jpg_ocr_falla(self, mock_image, mock_ocr):
+        mock_img = MagicMock()
+        mock_image.open.return_value = mock_img
+        mock_ocr.side_effect = Exception("Ollama no disponible")
+
+        with pytest.raises(ExtractionError, match="No se pudo procesar la imagen"):
+            await extract_factura(Path("foto.jpg"), "factura.jpg")

@@ -63,8 +63,8 @@ def extractor_view() -> None:
 
     # Upload de archivo
     uploaded_file = st.file_uploader(
-        "Seleccione una factura colombiana (PDF)",
-        type=["pdf"],
+        "Seleccione una factura colombiana (PDF, JPG o PNG)",
+        type=["pdf", "jpg", "jpeg", "png"],
         help=f"Tamaño máximo: {10}MB",
     )
 
@@ -78,7 +78,8 @@ def extractor_view() -> None:
         if st.button("🔍 Extraer Datos", type="primary"):
             with st.spinner("Procesando factura... Esto puede tomar unos segundos."):
                 try:
-                    files = {"archivo": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
+                    content_type = uploaded_file.type or "application/pdf"
+                    files = {"archivo": (uploaded_file.name, uploaded_file.getvalue(), content_type)}
                     response = requests.post(
                         f"{API_BASE_URL}/facturas/extraer",
                         files=files,
@@ -97,7 +98,7 @@ def extractor_view() -> None:
                     elif response.status_code == 413:
                         st.error("Archivo demasiado grande")
                     elif response.status_code == 422:
-                        st.error("Tipo de archivo no válido. Solo se aceptan PDFs.")
+                        st.error("Tipo de archivo no válido. Solo se aceptan PDF, JPG o PNG.")
                     else:
                         detail = response.json().get("detail", "Error desconocido")
                         st.error(f"Error: {detail}")

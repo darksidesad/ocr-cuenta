@@ -5,6 +5,7 @@ import tempfile
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from PIL import Image
 from pydantic import ValidationError
 
 from app.models import FacturaDIAN
@@ -14,31 +15,69 @@ from app.services.pdf_reader import PDFExtractionError, extract_text
 
 logger = logging.getLogger(__name__)
 
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
 
 class ExtractionError(Exception):
     """Error durante el proceso de extracción de datos."""
 
 
-async def extract_factura(pdf_path: Path, nombre_archivo: str) -> FacturaDIAN:
-    """Extrae datos de una factura colombiana desde un PDF.
+async def extract_factura(file_path: Path, nombre_archivo: str) -> FacturaDIAN:
+    """Extrae datos de una factura colombiana desde un PDF o imagen.
 
     Flujo:
-    1. Extraer texto (texto nativo → pdfplumber → pytesseract → Ollama glm-ocr)
-    2. Enviar a LLM para extracción estructurada (OpenRouter o Ollama)
-    3. Validar con Pydantic
-    4. Retornar FacturaDIAN validado
+    1. Detectar tipo de archivo (PDF o imagen)
+    2. Extraer texto (PDF: nativo → OCR → Ollama | Imagen: OCR → Ollama)
+    3. Enviar a LLM para extracción estructurada
+    4. Validar con Pydantic
     """
-    # Paso 1: Extraer texto con métodos progresivos
+    ext = file_path.suffix.lower()
+    if ext in IMAGE_EXTENSIONS:
+        return await _extract_from_image(file_path, nombre_archivo)
+    return await _extract_from_pdf(file_path, nombre_archivo)
+
+
+async def _extract_from_image(
+    file_path: Path, nombre_archivo: str
+) -> FacturaDIAN:
+    """Extrae datos desde una imagen (JPG/PNG) usando OCR directo."""
+    try:
+        image = Image.open(file_path)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            image.save(tmp.name, "PNG")
+            tmp_path = Path(tmp.name)
+        try:
+            texto = await ocr_with_llm(tmp_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    except Exception as e:
+        raise ExtractionError(f"No se pudo procesar la imagen: {e}") from e
+
+    if not texto.strip():
+        raise ExtractionError("No se pudo extraer texto de la imagen")
+
+    logger.info(f"Texto extraído de imagen: {len(texto)} caracteres")
+    return await _process_text(texto, "imagen_directa", nombre_archivo)
+
+
+async def _extract_from_pdf(
+    pdf_path: Path, nombre_archivo: str
+) -> FacturaDIAN:
+    """Extrae datos desde un PDF."""
     try:
         texto, metodo = await _extract_text_progressive(pdf_path)
     except PDFExtractionError as e:
         raise ExtractionError(str(e)) from e
     logger.info(f"Texto extraído: método={metodo}, {len(texto)} caracteres")
+    return await _process_text(texto, metodo, nombre_archivo)
 
-    # Paso 2: Enviar a LLM para extracción estructurada
+
+async def _process_text(
+    texto: str, metodo: str, nombre_archivo: str
+) -> FacturaDIAN:
+    """Procesa texto extraído: LLM + validación Pydantic."""
     raw_data = await _extract_structured_data(texto)
 
-    # Paso 3: Validar con Pydantic
     try:
         raw_data["metodo_extraccion"] = metodo
         factura = _parse_and_validate(raw_data, metodo)
